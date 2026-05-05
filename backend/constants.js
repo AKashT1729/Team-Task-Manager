@@ -1,0 +1,1 @@
+export const DB_NAME = 'team_task_manager';
