@@ -1,5 +1,5 @@
 import User from "../models/user.models.js";
-import ApiError from "../utils/ApiError.js";
+import { ApiError } from "../utils/ApiError.js";
 
 
 
@@ -20,3 +20,5 @@ const generateAccessAndRefereshTokens = async (userId) => {
     );
   }
 };
+
+export { generateAccessAndRefereshTokens };
