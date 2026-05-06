@@ -1,6 +1,6 @@
-import User from "../models/user.models.js";
-import Project from "../models/project.models.js";
-import Task from "../models/task.models.js";
+import { User } from "../models/user.models.js";
+import { Project } from "../models/project.models.js";
+import { Task } from "../models/task.models.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
@@ -41,15 +41,15 @@ const registerUser = asyncHandler(async (req, res) => {
   if (!avatarLocalPath) {
     throw new ApiError(400, "Please upload an avatar");
   }
-  const avatar = await uploadOnCloudinary(avatarLocalPath);
-  if (!avatar || !avatar.url) {
+  const avatarUrl = await uploadOnCloudinary(avatarLocalPath);
+  if (!avatarUrl) {
     throw new ApiError(400, "Error uploading avatar");
   }
 
   const user = await User.create({
     email,
     password,
-    avatar: avatar.url,
+    avatar: avatarUrl,
     role: "user",
   });
 
@@ -138,43 +138,43 @@ const logOutUser = asyncHandler(async (req, res) => {
 });
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
-  const incomingRefreshToken =
-    req.cookies.refreshToken || req.body.refreshToken;
-  if (!incomingRefreshToken) {
-    throw new ApiError(401, "unauthorized request");
-  }
-  try {
-    const decodedToken = jwt.verify(
-      incomingRefreshToken,
-      process.env.REFRESH_TOKEN_SECRET,
-    );
-    const user = await User.findById(decodedToken?._id);
-    if (!user) {
+    const incomingRefreshToken =
+      req.cookies.refreshToken || req.body.refreshToken;
+    if (!incomingRefreshToken) {
       throw new ApiError(401, "unauthorized request");
     }
-    if (incomingRefreshToken !== user?.refreshToken) {
-      throw new ApiError(401, "Refresh token is expired ");
-    }
-    const optons = {
-      httpOnly: true,
-      secure: true,
-    };
-    const { accessToken, newRefreshToken } =
-      await generateAccessAndRefereshTokens(user._id);
-    return res
-      .status(200)
-      .cookie("accessToken", user.accessToken, optons)
-      .cookie("refreshToken", user.newRefreshToken, optons)
-      .json(
-        new ApiResponse(
-          200,
-          { accessToken, refreshToken: newRefreshToken },
-          "refresh token refreshed successfully",
-        ),
+    try {
+      const decodedToken = jwt.verify(
+        incomingRefreshToken,
+        process.env.REFRESH_TOKEN_SECRET,
       );
-  } catch (error) {
-    throw new ApiError(401, error?.message || "Invalid refresh token");
-  }
+      const user = await User.findById(decodedToken?._id);
+      if (!user) {
+        throw new ApiError(401, "unauthorized request");
+      }
+      if (incomingRefreshToken !== user?.refreshToken) {
+        throw new ApiError(401, "Refresh token is expired ");
+      }
+      const options = {
+        httpOnly: true,
+        secure: true,
+      };
+      const { accessToken, refreshToken } =
+        await generateAccessAndRefereshTokens(user._id);
+      return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+          new ApiResponse(
+            200,
+            { accessToken, refreshToken },
+            "refresh token refreshed successfully",
+          ),
+        );
+    } catch (error) {
+      throw new ApiError(401, error?.message || "Invalid refresh token");
+    }
 });
 
 const changeCurrentPassword = asyncHandler(async (req, res) => {
@@ -210,14 +210,14 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is missing");
   }
-  const avatar = await uploadOnCloudinary(avatarLocalPath);
-  if (!avatar.url) {
-    throw new ApiError(400, " error uploading avatar");
+  const avatarUrl = await uploadOnCloudinary(avatarLocalPath);
+  if (!avatarUrl) {
+    throw new ApiError(400, "Error uploading avatar");
   }
   const user = await User.findByIdAndUpdate(
     req.user?._id,
-    { $set: { avatar: avatar.url } },
-    { new: true },
+    { $set: { avatar: avatarUrl } },
+    { new: true }
   ).select("-password");
 
   return res

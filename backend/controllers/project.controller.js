@@ -1,5 +1,5 @@
-import Project from "../models/project.models.js";
-import User from "../models/user.models.js";
+import { Project } from "../models/project.models.js";
+import { User } from "../models/user.models.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -63,8 +63,16 @@ const getUserProjects = asyncHandler(async (req, res) => {
  * Get single project by ID
  */
 const getProjectById = asyncHandler(async (req, res) => {
-  // Project is already populated by isProjectMember middleware
-  const project = req.project;
+  const { projectId } = req.params;
+
+  const project = await Project.findById(projectId)
+    .populate("creator", "name email avatar")
+    .populate("admins", "name email avatar")
+    .populate("members", "name email avatar");
+
+  if (!project) {
+    throw new ApiError(404, "Project not found");
+  }
 
   return res
     .status(200)

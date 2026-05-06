@@ -1,6 +1,6 @@
-import Task from "../models/task.models.js";
-import Project from "../models/project.models.js";
-import User from "../models/user.models.js";
+import { Task } from "../models/task.models.js";
+import { Project } from "../models/project.models.js";
+import { User } from "../models/user.models.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -95,9 +95,9 @@ const getProjectTasks = asyncHandler(async (req, res) => {
  * Get single task (only assigned user or project admin/creator)
  */
 const getTaskById = asyncHandler(async (req, res) => {
-  const { taskId } = req.params;
+  const { projectId, taskId } = req.params;
 
-  const task = await Task.findById(taskId)
+  const task = await Task.findOne({ _id: taskId, project: projectId })
     .populate("createdBy", "name email avatar")
     .populate("assignedTo", "name email avatar")
     .populate("project", "name");
@@ -118,7 +118,7 @@ const updateTask = asyncHandler(async (req, res) => {
   const { taskId } = req.params;
   const { title, description, assignedTo, status, priority, dueDate } = req.body;
 
-  // Find task and include project for permission check
+  // Fetch task with project for permission check (no populate to keep raw ObjectIds)
   const task = await Task.findOne({ _id: taskId }).populate("project");
   if (!task) {
     throw new ApiError(404, "Task not found");
@@ -131,14 +131,30 @@ const updateTask = asyncHandler(async (req, res) => {
       (adminId) => adminId.toString() === userId.toString()
     );
 
-  const isAssigned = task.assignedTo?._id.toString() === userId.toString();
+  const isAssigned = task.assignedTo && task.assignedTo.toString() === userId.toString();
   const isCreator = task.createdBy.toString() === userId.toString();
 
   // Admin/creator can update any field
   if (isProjectAdmin || isCreator) {
     if (title) task.title = title;
     if (description !== undefined) task.description = description;
-    if (assignedTo !== undefined) task.assignedTo = assignedTo;
+    if (assignedTo !== undefined) {
+      // Validate that the new assignee is a project member
+      if (assignedTo) {
+        const assignedUser = await User.findById(assignedTo);
+        if (!assignedUser) {
+          throw new ApiError(404, "Assigned user not found");
+        }
+        const isMember =
+          task.project.members.some((m) => m.toString() === assignedTo) ||
+          task.project.creator.toString() === assignedTo ||
+          task.project.admins.some((a) => a.toString() === assignedTo);
+        if (!isMember) {
+          throw new ApiError(400, "Assigned user must be a project member");
+        }
+      }
+      task.assignedTo = assignedTo;
+    }
     if (priority) task.priority = priority;
     if (dueDate !== undefined) task.dueDate = dueDate;
     if (status) task.status = status;
@@ -157,7 +173,7 @@ const updateTask = asyncHandler(async (req, res) => {
 
   await task.save();
 
-  const updatedTask = await Task.findById(taskId)
+  const updatedTask = await Task.findById(task._id)
     .populate("createdBy", "name email avatar")
     .populate("assignedTo", "name email avatar")
     .populate("project", "name");
