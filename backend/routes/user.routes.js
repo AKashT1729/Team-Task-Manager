@@ -15,12 +15,19 @@ import {
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middlewares.js";
 import { isAdmin } from "../middlewares/role.middleware.js";
+import {
+  validateUserSignup,
+  validateUserLogin,
+  sanitizeUserInput,
+} from "../middlewares/validation.middleware.js";
 const router = Router();
 
-// Admin-only user registration
+// Admin-only user registration with validation
 router.route("/register").post(
   verifyJWT,
   isAdmin,
+  sanitizeUserInput,
+  validateUserSignup,
   upload.fields([
     {
       name: "avatar",
@@ -30,7 +37,7 @@ router.route("/register").post(
   registerUser
 );
 
-router.route("/login").post(loginUser);
+router.route("/login").post(sanitizeUserInput, validateUserLogin, loginUser);
 
 // secured routes
 router.route("/logout").post(verifyJWT, logOutUser);

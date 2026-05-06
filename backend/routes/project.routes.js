@@ -14,6 +14,7 @@ import {
   isProjectMember,
   isAdmin,
 } from "../middlewares/role.middleware.js";
+import { sanitizeUserInput, validateProject } from "../middlewares/validation.middleware.js";
 
 const router = Router();
 
@@ -21,10 +22,10 @@ const router = Router();
 router.use(verifyJWT);
 
 // Project routes
-router.route("/").post(createProject); // Create project - creator becomes admin
+router.route("/").post(sanitizeUserInput, validateProject, createProject); // Create project - creator becomes admin
 router.route("/my-projects").get(getUserProjects); // Get user's projects
 router.route("/:projectId").get(isProjectMember, getProjectById); // Get single project (members only)
-router.route("/:projectId").patch(isProjectAdmin, updateProject); // Update project (admin only)
+router.route("/:projectId").patch(isProjectAdmin, sanitizeUserInput, validateProject, updateProject); // Update project (admin only)
 router.route("/:projectId").delete(isProjectAdmin, deleteProject); // Delete project (admin/creator only)
 
 // Member management routes

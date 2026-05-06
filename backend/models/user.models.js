@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
       trim: true,
       lowercase: true,
+      index: true,
     },
     name: {
       type: String,
@@ -25,6 +26,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["user", "admin"],
       default: "user",
+      index: true,
     },
     password: {
       type: String,
@@ -32,9 +34,10 @@ const userSchema = new mongoose.Schema(
     },
     refreshToken: {
       type: String,
+      index: true,
     },
   },
-  { timestamps: true },
+  { timestamps: true }
 );
 
 // Encrypting the password
@@ -47,7 +50,7 @@ userSchema.pre("save", async function (next) {
 
 // checking password is validity or not
 userSchema.methods.isPasswordCorrect = async function (password) {
-  return await bcrypt.compareSync(password, this.password);
+  return await bcrypt.compare(password, this.password);
 };
 
 userSchema.methods.generateAccessToken = function () {
@@ -61,7 +64,7 @@ userSchema.methods.generateAccessToken = function () {
     process.env.ACCESS_TOKEN_SECRET,
     {
       expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
-    },
+    }
   );
 };
 
@@ -74,7 +77,8 @@ userSchema.methods.generateRefreshToken = function () {
     process.env.REFRESH_TOKEN_SECRET,
     {
       expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
-    },
+    }
   );
 };
+
 export const User = mongoose.model("User", userSchema);
