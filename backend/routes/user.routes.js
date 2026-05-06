@@ -1,13 +1,44 @@
 import { Router } from "express";
-
+import {
+  changeCurrentPassword,
+  getCurrentuser,
+  getUserChannelProfile,
+  getWatchHistory,
+  logOutUser,
+  loginUser,
+  refreshAccessToken,
+  registerUser,
+  updateAccountDetails,
+  updateUserAvatar,
+  updateUserCoverImage,
+} from "../controllers/user.controller.js";
+import { upload } from "../middlewares/multer.middleware.js";
+import { verifyJWT } from "../middlewares/auth.middlewares.js";
 const router = Router();
 
-router.post("/register", async (req, res) => {
-  res.status(200).json({ message: "Register route" });
-});
+router.route("/register").post(
+  upload.fields([
+    {
+      name: "avatar",
+      maxCount: 1,
+    },
+    {
+      name: "coverImage",
+      maxCount: 1,
+    },
+  ]),
+  registerUser
+);
 
-router.post("/login", async (req, res) => {
-  res.status(200).json({ message: "Login route" });
-});
+router.route("/login").post(loginUser);
+
+//secured routes
+router.route("/logout").post(verifyJWT, logOutUser);
+router.route("/refresh-token").post(refreshAccessToken);
+router.route("/change-password").post(verifyJWT, changeCurrentPassword);
+router.route("/current-user").get(verifyJWT, getCurrentuser);
+router
+  .route("/avatar-upload")
+  .patch(verifyJWT, upload.single("avatar"), updateUserAvatar);
 
 export default router;
