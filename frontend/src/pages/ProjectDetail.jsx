@@ -4,7 +4,7 @@ import { projectService, taskService } from '../services';
 import { formatDate } from '../utils/helpers';
 import {
   ArrowLeft,
-  Users,
+  Users as UsersIcon,
   Calendar,
   Plus,
   Trash2,
@@ -132,13 +132,13 @@ const ProjectDetail = () => {
           </div>
           {isAdmin && (
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setShowMemberModal(true)}
-                className="flex items-center px-3 py-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                Manage Members
-              </button>
+               <button
+                 onClick={() => setShowMemberModal(true)}
+                 className="flex items-center px-3 py-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+               >
+                 <UsersIcon className="w-4 h-4 mr-2" />
+                 Manage Members
+               </button>
               <button
                 onClick={handleDeleteProject}
                 className="flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -151,14 +151,14 @@ const ProjectDetail = () => {
         </div>
 
         <div className="mt-4 flex items-center text-sm text-gray-500 space-x-4">
-          <div className="flex items-center">
-            <Calendar className="w-4 h-4 mr-1" />
-            Created {formatDate(project.createdAt)}
-          </div>
-          <div className="flex items-center">
-            <Users className="w-4 h-4 mr-1" />
-            {project.members?.length || 0} members
-          </div>
+           <div className="flex items-center">
+             <Calendar className="w-4 h-4 mr-1" />
+             Created {formatDate(project.createdAt)}
+           </div>
+           <div className="flex items-center">
+             <UsersIcon className="w-4 h-4 mr-1" />
+             {project.members?.length || 0} members
+           </div>
         </div>
 
         {/* Members List */}

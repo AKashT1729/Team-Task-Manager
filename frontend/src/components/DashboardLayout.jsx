@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard,
   FolderKanban,
-  Users,
+  Users as UsersIcon,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -18,7 +18,7 @@ const DashboardLayout = ({ children }) => {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Projects', href: '/projects', icon: FolderKanban },
-    ...(isAdmin ? [{ name: 'Users', href: '/users', icon: Users }] : []),
+     ...(isAdmin ? [{ name: 'Users', href: '/users', icon: UsersIcon }] : []),
   ];
 
   const isActive = (path) => location.pathname.startsWith(path);

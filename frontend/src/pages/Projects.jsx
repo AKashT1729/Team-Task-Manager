@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { projectService } from '../services';
 import { formatDate } from '../utils/helpers';
-import { Plus, FolderKanban, Users, Trash2, Edit2 } from 'lucide-react';
+import { Plus, FolderKanban, Users as UsersIcon, Trash2, Edit2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Projects = () => {
@@ -115,7 +115,7 @@ const Projects = () => {
 
               <div className="mt-4 flex items-center justify-between text-sm">
                 <div className="flex items-center text-gray-500">
-                  <Users className="w-4 h-4 mr-1" />
+                   <UsersIcon className="w-4 h-4 mr-1" />
                   {project.members?.length || 0} members
                 </div>
                 <div className="flex items-center text-gray-500">

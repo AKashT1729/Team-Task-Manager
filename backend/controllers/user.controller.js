@@ -128,7 +128,7 @@ const logOutUser = asyncHandler(async (req, res) => {
   );
   const optons = {
     httpOnly: true,
-    secure: true,
+    secure: false,
   };
   return res
     .status(200)
@@ -155,10 +155,10 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
       if (incomingRefreshToken !== user?.refreshToken) {
         throw new ApiError(401, "Refresh token is expired ");
       }
-      const options = {
-        httpOnly: true,
-        secure: true,
-      };
+const options = {
+  httpOnly: true,
+  secure: false,
+};
       const { accessToken, refreshToken } =
         await generateAccessAndRefereshTokens(user._id);
       return res

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { userService } from '../services';
 import { formatDate } from '../utils/helpers';
-import { Users, Shield, UserX, Trash2, ShieldOff } from 'lucide-react';
+import { Users as UsersIcon, Shield, UserX, Trash2, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const Users = () => {
@@ -99,11 +99,11 @@ const Users = () => {
                   <td className="px-6 py-4 text-gray-600">{user.email}</td>
                   <td className="px-6 py-4">
                     <div className="flex items-center">
-                      {user.role === 'admin' ? (
-                        <Shield className="w-4 h-4 text-red-500 mr-2" />
-                      ) : (
-                        <Users className="w-4 h-4 text-gray-400 mr-2" />
-                      )}
+                       {user.role === 'admin' ? (
+                         <Shield className="w-4 h-4 text-red-500 mr-2" />
+                       ) : (
+                         <UsersIcon className="w-4 h-4 text-gray-400 mr-2" />
+                       )}
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         user.role === 'admin'
                           ? 'bg-red-100 text-red-700'
@@ -155,7 +155,7 @@ const Users = () => {
 
         {users.length === 0 && (
           <div className="p-12 text-center">
-            <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+             <UsersIcon className="w-16 h-16 text-gray-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No users found</h3>
             <p className="text-gray-500">Users will appear here once registered.</p>
           </div>
