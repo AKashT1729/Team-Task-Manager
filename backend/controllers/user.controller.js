@@ -1,9 +1,12 @@
 import User from "../models/user.models.js";
+import Project from "../models/project.models.js";
+import Task from "../models/task.models.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import {asyncHandler } from "../utils/asyncHandler.js";
 import jwt from "jsonwebtoken";
+
 const generateAccessAndRefereshTokens = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -23,47 +26,31 @@ const generateAccessAndRefereshTokens = async (userId) => {
 };
 
 const registerUser = asyncHandler(async (req, res) => {
-  //get user details from frontend
-  //validation - check field is not empty
-  //check if user already exists : email
-  //check for images , check avatar
-  //upload them into cloudinary ,avatar
-  //create user object - create entry in database
-  //remove password and refresh token field from response
-  //check for user creation
-  //retun response
-
-  const { name, email, role, password } = req.body;
-  //console.log(fullName, email);
+  const { name, email, password } = req.body;
 
   if ([name, email, password].some((field) => field?.trim() === "")) {
     throw new ApiError(400, "Please fill all the fields");
   }
 
-  const userExists = await User.findOne({
-    $or: [{ email }],
-  });
+  const userExists = await User.findOne({ email });
   if (userExists) {
     throw new ApiError(409, "User already exists");
   }
-  // console.log(req.files)
-  const avatarLocalPath = req.files?.avatar[0]?.path; //ensures that if req.files is null or undefined, the code doesn't throw an error but instead returns undefined
 
+  const avatarLocalPath = req.files?.avatar[0]?.path;
   if (!avatarLocalPath) {
     throw new ApiError(400, "Please upload an avatar");
   }
   const avatar = await uploadOnCloudinary(avatarLocalPath);
-
-  // console.log(avatar);
-  if (!avatar) {
-    throw new ApiError(400, "Please upload an avatar");
+  if (!avatar || !avatar.url) {
+    throw new ApiError(400, "Error uploading avatar");
   }
 
   const user = await User.create({
     email,
     password,
-    avatar: avatar,
-    role: role || "user", // Set default role if not provided
+    avatar: avatar.url,
+    role: "user",
   });
 
   const createUser = await User.findById(user._id).select(
@@ -194,7 +181,11 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body;
 
   const user = await User.findById(req.user?._id);
-  const isPasswordCorrect = await isPasswordCorrect(oldPassword);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
   if (!isPasswordCorrect) {
     throw new ApiError(400, "Invalid old password");
   }
@@ -234,6 +225,107 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, user, "Avatar updated successfully"));
 });
 
+/**
+ * Get all users (Admin only)
+ */
+const getAllUsers = asyncHandler(async (req, res) => {
+  const users = await User.find({}).select("-password -refreshToken");
+  return res
+    .status(200)
+    .json(new ApiResponse(200, users, "All users fetched successfully"));
+});
+
+/**
+ * Get user by ID (Admin or self)
+ */
+const getUserById = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  // Allow admin or the user themselves
+  if (
+    req.user.role !== "admin" &&
+    req.user._id.toString() !== userId.toString()
+  ) {
+    throw new ApiError(403, "You can only view your own profile");
+  }
+
+  const user = await User.findById(userId).select("-password -refreshToken");
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, user, "User fetched successfully"));
+});
+
+/**
+ * Update user role (Admin only)
+ */
+const updateUserRole = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { role } = req.body;
+
+  if (!["user", "admin"].includes(role)) {
+    throw new ApiError(400, "Invalid role");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  user.role = role;
+  await user.save();
+
+  const updatedUser = await User.findById(userId).select(
+    "-password -refreshToken"
+  );
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, updatedUser, "User role updated successfully"));
+});
+
+/**
+ * Delete user (Admin only)
+ */
+const deleteUser = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+
+  // Prevent admin from deleting themselves via this endpoint
+  if (req.user._id.toString() === userId.toString()) {
+    throw new ApiError(400, "You cannot delete your own account through admin endpoint");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  // Reassign or clear tasks assigned to this user
+  await Task.updateMany(
+    { assignedTo: userId },
+    { $set: { assignedTo: null } }
+  );
+
+  // Remove user from all projects
+  await Project.updateMany(
+    { members: userId },
+    { $pull: { members: userId } }
+  );
+  await Project.updateMany(
+    { admins: userId },
+    { $pull: { admins: userId } }
+  );
+
+  await User.findByIdAndDelete(userId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "User deleted successfully"));
+});
+
 export {
   generateAccessAndRefereshTokens,
   registerUser,
@@ -242,4 +334,8 @@ export {
   refreshAccessToken,
   getCurrentuser,
   updateUserAvatar,
+  getAllUsers,
+  getUserById,
+  updateUserRole,
+  deleteUser,
 };
