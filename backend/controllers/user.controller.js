@@ -338,4 +338,5 @@ export {
   getUserById,
   updateUserRole,
   deleteUser,
+  changeCurrentPassword,
 };
