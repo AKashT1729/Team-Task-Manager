@@ -1,334 +1,381 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { projectService, taskService } from '../services';
-import { formatDate } from '../utils/helpers';
+import { useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { useProject, useAddMember, useRemoveMember } from "../hooks/useProjects";
+import { useTasks, useCreateTask, useUpdateTask, useDeleteTask } from "../hooks/useTasks";
+import { useUsers } from "../hooks/useUsers";
 import {
-  ArrowLeft,
-  Users as UsersIcon,
-  Calendar,
-  Plus,
-  Trash2,
-  Check,
-  X,
-} from 'lucide-react';
-import toast from 'react-hot-toast';
+  Card, CardBody, Button, Modal, Input, Select, Textarea,
+  Badge, Avatar, PageLoader, EmptyState
+} from "../components/ui";
+import {
+  ArrowLeft, Plus, Trash2, Users, Calendar,
+  Flag, MoreVertical, X
+} from "lucide-react";
+import { formatDate, isOverdue } from "../lib/utils";
+import useAuthStore from "../stores/authStore";
 
-const ProjectDetail = () => {
+const STATUS_OPTIONS = [
+  { value: "todo", label: "To Do" },
+  { value: "in-progress", label: "In Progress" },
+  { value: "review", label: "Review" },
+  { value: "done", label: "Done" },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+
+const statusColors = {
+  todo: "default",
+  "in-progress": "primary",
+  review: "warning",
+  done: "success",
+};
+
+const priorityColors = {
+  low: "default",
+  medium: "warning",
+  high: "danger",
+};
+
+const statusLabels = {
+  todo: "To Do",
+  "in-progress": "In Progress",
+  review: "Review",
+  done: "Done",
+};
+
+export default function ProjectDetail() {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  const [project, setProject] = useState(null);
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [showTaskModal, setShowTaskModal] = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
-  const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [users, setUsers] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
 
-  useEffect(() => {
-    fetchProjectData();
-  }, [projectId]);
+  // Task form state
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDesc, setTaskDesc] = useState("");
+  const [taskPriority, setTaskPriority] = useState("medium");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskAssignee, setTaskAssignee] = useState("");
 
-  const fetchProjectData = async () => {
-    try {
-      const [projectRes, tasksRes] = await Promise.all([
-        projectService.getProject(projectId),
-        taskService.getProjectTasks(projectId),
-      ]);
-      setProject(projectRes.data);
-      setTasks(tasksRes.data);
-    } catch (error) {
-      toast.error('Failed to load project');
-      navigate('/projects');
-    } finally {
-      setLoading(false);
-    }
+  const { data: project, isLoading: projectLoading } = useProject(projectId);
+  const { data: tasks, isLoading: tasksLoading } = useTasks(projectId);
+  const { data: allUsers } = useUsers();
+  const { user: currentUser } = useAuthStore();
+
+  const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+  const deleteTask = useDeleteTask();
+  const addMember = useAddMember();
+  const removeMember = useRemoveMember();
+
+  const isAdmin = project?.admins?.some((a) => a._id === currentUser?._id) || project?.creator?._id === currentUser?._id;
+
+  const resetTaskForm = () => {
+    setTaskTitle("");
+    setTaskDesc("");
+    setTaskPriority("medium");
+    setTaskDueDate("");
+    setTaskAssignee("");
+    setEditingTask(null);
   };
 
-  const handleAddMember = async (e) => {
+  const openCreateTask = () => {
+    resetTaskForm();
+    setShowTaskModal(true);
+  };
+
+  const openEditTask = (task) => {
+    setEditingTask(task);
+    setTaskTitle(task.title);
+    setTaskDesc(task.description || "");
+    setTaskPriority(task.priority);
+    setTaskDueDate(task.dueDate ? task.dueDate.slice(0, 10) : "");
+    setTaskAssignee(task.assignedTo?._id || "");
+    setShowTaskModal(true);
+  };
+
+  const handleTaskSubmit = (e) => {
     e.preventDefault();
-    if (!newMemberEmail.trim()) return;
+    const data = {
+      title: taskTitle,
+      description: taskDesc,
+      priority: taskPriority,
+      dueDate: taskDueDate || undefined,
+      assignedTo: taskAssignee || undefined,
+    };
 
-    setSubmitting(true);
-    try {
-      // First get all users to find by email
-      const usersRes = await fetch('http://localhost:8000/api/v1/users/admin/users', {
-        credentials: 'include',
-      });
-      const usersData = await usersRes.json();
-      const user = usersData.data?.find((u) => u.email === newMemberEmail);
+    if (editingTask) {
+      updateTask.mutate(
+        { projectId, taskId: editingTask._id, data },
+        { onSuccess: () => setShowTaskModal(false) }
+      );
+    } else {
+      createTask.mutate(
+        { projectId, data },
+        { onSuccess: () => setShowTaskModal(false) }
+      );
+    }
+    resetTaskForm();
+  };
 
-      if (!user) {
-        toast.error('User not found');
-        return;
-      }
+  const handleStatusChange = (taskId, newStatus) => {
+    updateTask.mutate({ projectId, taskId, data: { status: newStatus } });
+  };
 
-      await projectService.addMember(projectId, user._id);
-      await fetchProjectData();
-      setNewMemberEmail('');
-      setShowMemberModal(false);
-      toast.success('Member added successfully!');
-    } catch (error) {
-      toast.error(error.message || 'Failed to add member');
-    } finally {
-      setSubmitting(false);
+  const handleDeleteTask = (taskId) => {
+    if (window.confirm("Delete this task?")) {
+      deleteTask.mutate({ projectId, taskId });
     }
   };
 
-  const handleRemoveMember = async (userId) => {
-    if (!window.confirm('Remove this member?')) return;
+  const handleAddMember = (userId) => {
+    addMember.mutate({ projectId, userId });
+  };
 
-    try {
-      await projectService.removeMember(projectId, userId);
-      await fetchProjectData();
-      toast.success('Member removed');
-    } catch (error) {
-      toast.error(error.message || 'Failed to remove member');
+  const handleRemoveMember = (userId) => {
+    if (window.confirm("Remove this member?")) {
+      removeMember.mutate({ projectId, userId });
     }
   };
 
-  const handleDeleteProject = async () => {
-    if (!window.confirm('Delete this project and all its tasks?')) return;
+  if (projectLoading) return <PageLoader />;
 
-    try {
-      await projectService.deleteProject(projectId);
-      navigate('/projects');
-      toast.success('Project deleted!');
-    } catch (error) {
-      toast.error(error.message || 'Failed to delete project');
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
-
-  if (!project) {
-    return <div>Project not found</div>;
-  }
-
-  const isAdmin = project.admins?.some((admin) => admin._id === localStorage.getItem('userId')) || false;
+  const columns = ["todo", "in-progress", "review", "completed"];
 
   return (
     <div className="space-y-6">
-      {/* Back Button */}
-      <button
-        onClick={() => navigate('/projects')}
-        className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-      >
-        <ArrowLeft className="w-5 h-5 mr-2" />
-        Back to Projects
-      </button>
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Link
+          to="/projects"
+          className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </Link>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-gray-900">{project?.name}</h1>
+          <p className="text-gray-500">{project?.description}</p>
+        </div>
+        <Button onClick={() => setShowMemberModal(true)} variant="outline">
+          <Users className="w-4 h-4 mr-2" />
+          Members
+        </Button>
+        <Button onClick={openCreateTask}>
+          <Plus className="w-4 h-4 mr-2" />
+          Add Task
+        </Button>
+      </div>
 
-      {/* Project Header */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-            <p className="text-gray-600 mt-2">{project.description || 'No description'}</p>
+      {/* Kanban Board */}
+      {tasksLoading ? (
+        <PageLoader />
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {columns.map((status) => {
+            const columnTasks = (tasks || []).filter((t) => t.status === status);
+            return (
+              <div key={status} className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-gray-700">{statusLabels[status]}</h3>
+                    <span className="text-sm text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">
+                      {columnTasks.length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {columnTasks.map((task) => (
+                    <Card
+                      key={task._id}
+                      className="cursor-pointer hover:shadow-md transition-shadow"
+                      onClick={() => openEditTask(task)}
+                    >
+                      <CardBody className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-medium text-gray-900 text-sm">{task.title}</h4>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTask(task._id);
+                            }}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {task.description && (
+                          <p className="text-xs text-gray-500 mb-3 line-clamp-2">{task.description}</p>
+                        )}
+
+                        <div className="flex items-center gap-2 mb-3">
+                          <Badge variant={priorityColors[task.priority]}>{task.priority}</Badge>
+                          {isOverdue(task.dueDate) && task.status !== "done" && (
+                            <Badge variant="danger">Overdue</Badge>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                          {task.assignedTo ? (
+                            <Avatar name={task.assignedTo.name} size="sm" />
+                          ) : (
+                            <span className="text-xs text-gray-400">Unassigned</span>
+                          )}
+                          {task.dueDate && (
+                            <span className="text-xs text-gray-400 flex items-center">
+                              <Calendar className="w-3 h-3 mr-1" />
+                              {formatDate(task.dueDate)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Status change */}
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <select
+                            value={task.status}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleStatusChange(task._id, e.target.value);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-full text-xs px-2 py-1.5 rounded border border-gray-200 bg-white"
+                          >
+                            {STATUS_OPTIONS.map((s) => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </CardBody>
+                    </Card>
+                  ))}
+
+                  {columnTasks.length === 0 && (
+                    <div className="text-center py-8 text-sm text-gray-400">
+                      No tasks
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Task Modal */}
+      <Modal
+        isOpen={showTaskModal}
+        onClose={() => { setShowTaskModal(false); resetTaskForm(); }}
+        title={editingTask ? "Edit Task" : "Create Task"}
+      >
+        <form onSubmit={handleTaskSubmit} className="space-y-4">
+          <Input
+            label="Title"
+            placeholder="Task title"
+            value={taskTitle}
+            onChange={(e) => setTaskTitle(e.target.value)}
+            required
+          />
+          <Textarea
+            label="Description"
+            placeholder="Task description..."
+            value={taskDesc}
+            onChange={(e) => setTaskDesc(e.target.value)}
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Priority"
+              options={PRIORITY_OPTIONS}
+              value={taskPriority}
+              onChange={(e) => setTaskPriority(e.target.value)}
+            />
+            <Input
+              label="Due Date"
+              type="date"
+              value={taskDueDate}
+              onChange={(e) => setTaskDueDate(e.target.value)}
+            />
           </div>
-          {isAdmin && (
-            <div className="flex items-center space-x-2">
-               <button
-                 onClick={() => setShowMemberModal(true)}
-                 className="flex items-center px-3 py-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-               >
-                 <UsersIcon className="w-4 h-4 mr-2" />
-                 Manage Members
-               </button>
-              <button
-                onClick={handleDeleteProject}
-                className="flex items-center px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </button>
+          <Select
+            label="Assign To"
+            options={[
+              { value: "", label: "Unassigned" },
+              ...(project?.members?.map((m) => ({ value: m._id, label: m.name })) || []),
+            ]}
+            value={taskAssignee}
+            onChange={(e) => setTaskAssignee(e.target.value)}
+          />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => { setShowTaskModal(false); resetTaskForm(); }}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={createTask.isPending || updateTask.isPending}>
+              {editingTask ? "Update" : "Create"} Task
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Members Modal */}
+      <Modal isOpen={showMemberModal} onClose={() => setShowMemberModal(false)} title="Project Members">
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium text-gray-700">Current Members</h4>
+            {project?.members?.map((member) => (
+              <div key={member._id} className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <Avatar name={member.name} size="sm" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{member.name}</p>
+                    <p className="text-xs text-gray-500">{member.email}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {project?.admins?.some((a) => a._id === member._id) && (
+                    <Badge variant="primary">Admin</Badge>
+                  )}
+                  {isAdmin && member._id !== project?.creator?._id && (
+                    <button
+                      onClick={() => handleRemoveMember(member._id)}
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {isAdmin && allUsers && (
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-2">Add Member</h4>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {allUsers
+                  .filter((u) => !project?.members?.some((m) => m._id === u._id))
+                  .map((user) => (
+                    <button
+                      key={user._id}
+                      onClick={() => handleAddMember(user._id)}
+                      className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 text-left"
+                    >
+                      <Avatar name={user.name} size="sm" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{user.name}</p>
+                        <p className="text-xs text-gray-500">{user.email}</p>
+                      </div>
+                      <Plus className="w-4 h-4 text-gray-400 ml-auto" />
+                    </button>
+                  ))}
+              </div>
             </div>
           )}
         </div>
-
-        <div className="mt-4 flex items-center text-sm text-gray-500 space-x-4">
-           <div className="flex items-center">
-             <Calendar className="w-4 h-4 mr-1" />
-             Created {formatDate(project.createdAt)}
-           </div>
-           <div className="flex items-center">
-             <UsersIcon className="w-4 h-4 mr-1" />
-             {project.members?.length || 0} members
-           </div>
-        </div>
-
-        {/* Members List */}
-        <div className="mt-6">
-          <h3 className="text-sm font-medium text-gray-700 mb-3">Team Members</h3>
-          <div className="flex flex-wrap gap-2">
-            {project.members?.map((member) => (
-              <div
-                key={member._id}
-                className="flex items-center px-3 py-1.5 bg-gray-100 rounded-full"
-              >
-                <div className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center text-white text-xs font-medium">
-                  {member.name?.charAt(0)?.toUpperCase()}
-                </div>
-                <span className="ml-2 text-sm font-medium text-gray-700">{member.name}</span>
-                {project.admins?.some((admin) => admin._id === member._id) && (
-                  <span className="ml-2 px-2 py-0.5 bg-primary-100 text-primary-700 text-xs rounded-full">
-                    Admin
-                  </span>
-                )}
-                {isAdmin && member._id !== project.creator._id && (
-                  <button
-                    onClick={() => handleRemoveMember(member._id)}
-                    className="ml-2 text-gray-400 hover:text-red-500"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Tasks Section */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Tasks</h2>
-          {isAdmin && (
-            <Link
-              to={`/projects/${projectId}/tasks/create`}
-              className="flex items-center px-3 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Task
-            </Link>
-          )}
-        </div>
-
-        {tasks.length > 0 ? (
-          <div className="divide-y divide-gray-200">
-            {tasks.map((task) => (
-              <Link
-                key={task._id}
-                to={`/projects/${projectId}/tasks/${task._id}`}
-                className="block p-6 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-medium text-gray-900">{task.title}</h3>
-                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                      {task.description || 'No description'}
-                    </p>
-                    <div className="mt-3 flex items-center space-x-4 text-sm">
-                      <span
-                        className={`px-2 py-1 rounded-full ${
-                          task.status === 'todo'
-                            ? 'bg-gray-100 text-gray-700'
-                            : task.status === 'in-progress'
-                            ? 'bg-blue-100 text-blue-700'
-                            : task.status === 'review'
-                            ? 'bg-yellow-100 text-yellow-700'
-                            : 'bg-green-100 text-green-700'
-                        }`}
-                      >
-                        {task.status.replace('-', ' ')}
-                      </span>
-                      <span
-                        className={`px-2 py-1 rounded-full ${
-                          task.priority === 'low'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : task.priority === 'medium'
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}
-                      >
-                        {task.priority}
-                      </span>
-                      {task.dueDate && (
-                        <span className="text-gray-500">
-                          Due: {formatDate(task.dueDate)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    {task.assignedTo ? (
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 text-sm font-medium">
-                          {task.assignedTo.name?.charAt(0)?.toUpperCase()}
-                        </div>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-400">Unassigned</span>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <div className="p-12 text-center">
-            <p className="text-gray-500 mb-4">No tasks in this project yet</p>
-            {isAdmin && (
-              <Link
-                to={`/projects/${projectId}/tasks/create`}
-                className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create First Task
-              </Link>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Add Member Modal */}
-      {showMemberModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Add Team Member</h2>
-            <form onSubmit={handleAddMember}>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  User Email
-                </label>
-                <input
-                  type="email"
-                  value={newMemberEmail}
-                  onChange={(e) => setNewMemberEmail(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                  placeholder="Enter user email"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter the email of an existing user
-                </p>
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowMemberModal(false)}
-                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !newMemberEmail.trim()}
-                  className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                >
-                  {submitting ? 'Adding...' : 'Add Member'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
-};
-
-export default ProjectDetail;
+}
